@@ -1,3 +1,4 @@
+const tesseract = require("tesseract.js");
 const ExcelJS = require("exceljs");
 const scrapeCategory = async (browser, url) =>
   new Promise(async (resolve, reject) => {
@@ -11,18 +12,40 @@ const scrapeCategory = async (browser, url) =>
       await page.click(
         "#bodyP > div.khungtong > div.frm_login > div.khungbaolongin > div.left-conten > div > div:nth-child(2) > a"
       );
-      await page.waitForNavigation();
-      await page.click(
-        "#bodyP > div > div.banner > div.dangnhap > span:nth-child(2) > button"
-      );
 
-      await page.waitForSelecter("#_userName");
+      await page.waitForTimeout(2000);
+      await page.evaluate(() => {
+        document
+          .querySelector(
+            "#bodyP > div > div.banner > div.dangnhap > span:nth-child(2) > button"
+          )
+          .click();
+      });
+
+      await page.waitForSelector("#_userName");
       await page.focus("#_userName");
       await page.type("#_userName", "0315375348-QL");
 
-      await page.waitForSelecter("#password");
+      await page.waitForSelector("#password");
       await page.focus("#password");
       await page.type("#password", "@Gonext$12");
+
+      const imgFax = await page.$$eval(
+        "#loginForm > table > tbody > tr:nth-child(4) > td > div > div.hien_mxn",
+        (trs) => {
+          let result = "";
+          Array.from(trs, (th) => {
+            const base64 = th.querySelector("#safecode").src;
+            result = base64;
+          });
+          return result;
+        }
+      );
+      console.log(imgFax);
+
+      await tesseract.recognize(imgFax, "eng").then(({ data: { text } }) => {
+        console.log(text);
+      });
 
       await page.waitForNavigation();
       const currentUrl = page.url();
