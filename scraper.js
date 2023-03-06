@@ -1,10 +1,17 @@
+const fs = require("fs");
+const path = require("path");
 const tesseract = require("tesseract.js");
 const ExcelJS = require("exceljs");
+const ac = require("@antiadmin/anticaptchaofficial");
+ac.setAPIKey(
+  process.env.ANTI_CAPTCHA_KEY || "15142e9e43076b50f2c78247a94129ca"
+);
 const scrapeCategory = async (browser, url) =>
   new Promise(async (resolve, reject) => {
     try {
       let taxID;
       const arrayA = [];
+      const timestamp = new Date().getTime();
       let page = await browser.newPage();
       console.log(">> Mở tab mới...");
 
@@ -30,25 +37,68 @@ const scrapeCategory = async (browser, url) =>
       await page.focus("#password");
       await page.type("#password", "@Gonext$12");
 
-      const imgFax = await page.$$eval(
-        "#loginForm > table > tbody > tr:nth-child(4) > td > div > div.hien_mxn",
-        (trs) => {
-          let result = "";
-          Array.from(trs, (th) => {
-            const base64 = th.querySelector("#safecode").src;
-            result = base64;
-          });
-          return result;
+      const myElement = await page.$(
+        "#loginForm > table > tbody > tr:nth-child(4) > td > div > div.hien_mxn"
+      );
+
+      const screenshotBuffer = await myElement.screenshot();
+      fs.writeFileSync(
+        path.resolve(__dirname, `${timestamp}-captcha.png`),
+        screenshotBuffer
+      );
+      const captcha = fs.readFileSync(
+        path.resolve(__dirname, `${timestamp}-captcha.png`),
+        {
+          encoding: "base64",
         }
       );
-      console.log(imgFax);
 
-      await tesseract.recognize(imgFax, "eng").then(({ data: { text } }) => {
-        console.log(text);
+      let valueCaptcha = null;
+      for (let retryIndex = 0; retryIndex < 1000; retryIndex++) {
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          valueCaptcha = await ac.solveImage(captcha, true);
+
+          break;
+        } catch (error) {
+          // eslint-disable-next-line no-continue
+          continue;
+        }
+      }
+      fs.rmSync(path.resolve(__dirname, `${timestamp}-captcha.png`), {
+        recursive: true,
       });
 
-      await page.waitForNavigation();
-      const currentUrl = page.url();
+      console.log(valueCaptcha);
+      await page.waitForSelector("#vcode");
+      await page.focus("#vcode");
+      await page.type("#vcode", valueCaptcha);
+
+      await page.waitForSelector("#dangnhap");
+      await page.evaluate(() => {
+        document.querySelector("#dangnhap").click();
+      });
+
+      await page.waitForSelector("#tabmenu > li.li-3 > a");
+
+      await page.evaluate(() => {
+        document.querySelector("#tabmenu > li.li-3 > a").click();
+      });
+
+      await page.waitForSelector("#sc3 > ul > li:nth-child(8) > a");
+
+      await page.evaluate(() => {
+        document.querySelector("#sc3 > ul > li:nth-child(8) > a").click();
+      });
+
+      await page.waitForSelector(".button_vuong");
+      await page.click(".button_vuong");
+
+      // await page.evaluate(() => {
+      //   document.querySelector(".button_vuong").click();
+      // });
+      //await page.waitForNavigation();
+      // const currentUrl = page.url();
 
       // const workbook = new ExcelJS.Workbook();
       // const worksheet = workbook.addWorksheet("Sheet1");

@@ -10,6 +10,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@antiadmin/anticaptchaofficial": "^1.0.29",
     "exceljs": "^4.3.0",
     "puppeteer": "^19.7.2",
     "tesseract.js": "^4.0.2"
