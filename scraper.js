@@ -1,6 +1,5 @@
 const fs = require("fs");
 const path = require("path");
-const tesseract = require("tesseract.js");
 const ExcelJS = require("exceljs");
 const ac = require("@antiadmin/anticaptchaofficial");
 ac.setAPIKey(
@@ -9,13 +8,17 @@ ac.setAPIKey(
 const scrapeCategory = async (browser, url) =>
   new Promise(async (resolve, reject) => {
     try {
-      let taxID;
       const arrayA = [];
       const timestamp = new Date().getTime();
       let page = await browser.newPage();
       console.log(">> Mở tab mới...");
 
       await page.goto(url);
+      const client = await page.target().createCDPSession();
+      await client.send("Page.setDownloadBehavior", {
+        behavior: "allow",
+        downloadPath: path.resolve("./filetax"),
+      });
       await page.click(
         "#bodyP > div.khungtong > div.frm_login > div.khungbaolongin > div.left-conten > div > div:nth-child(2) > a"
       );
@@ -79,11 +82,11 @@ const scrapeCategory = async (browser, url) =>
         document.querySelector("#dangnhap").click();
       });
 
+      await page.waitForNavigation();
+
       await page.waitForSelector("#tabmenu > li.li-3 > a");
 
-      await page.evaluate(() => {
-        document.querySelector("#tabmenu > li.li-3 > a").click();
-      });
+      await page.click("#tabmenu > li.li-3 > a");
 
       await page.waitForSelector("#sc3 > ul > li:nth-child(8) > a");
 
@@ -91,36 +94,249 @@ const scrapeCategory = async (browser, url) =>
         document.querySelector("#sc3 > ul > li:nth-child(8) > a").click();
       });
 
-      await page.waitForSelector(".button_vuong");
-      await page.click(".button_vuong");
+      await page.waitForTimeout(5000);
+      // await page.click(".button_vuong");
+      await page.evaluate(() => {
+        document
+          .querySelector("#tranFrame")
+          .contentWindow.document.body.querySelector(".button_vuong")
+          .click();
+        return null;
+      });
 
-      // await page.evaluate(() => {
-      //   document.querySelector(".button_vuong").click();
-      // });
-      //await page.waitForNavigation();
-      // const currentUrl = page.url();
+      await page.waitForTimeout(5000);
 
-      // const workbook = new ExcelJS.Workbook();
-      // const worksheet = workbook.addWorksheet("Sheet1");
-      // worksheet.columns = [
-      //   { header: "Tên công ty", key: "companyName", width: 30 },
-      //   { header: "Tên quốc tế", key: "companyNameEn", width: 20 },
-      //   { header: "Tên viết tắt", key: "companyNameShort", width: 10 },
-      //   { header: "Mã số thuế", key: "taxID", width: 30 },
-      //   { header: "Địa chỉ", key: "address", width: 20 },
-      //   { header: "Người đại diện", key: "owners", width: 10 },
-      //   { header: "Số Điện thoại", key: "phone", width: 30 },
-      //   { header: "Ngày hoạt động", key: "startDay", width: 30 },
-      //   { header: "Quản lý bởi", key: "ownerBy", width: 20 },
-      //   { header: "Loại hình DN", key: "legacyType", width: 10 },
-      //   { header: "Tình trạng", key: "status", width: 30 },
-      // ];
-      // arrayA.forEach((row) => {
-      //   worksheet.addRow(row);
-      // });
-      // workbook.xlsx.writeFile("data.xlsx").then(() => {
-      //   console.log("Đã xuất tệp Excel thành công");
-      // });
+      const number = await page.evaluate(() => {
+        return document
+          .querySelector("#tranFrame")
+          .contentWindow.document.body.querySelector(
+            `#currAcc > b:nth-child(7)`
+          )
+          .innerHTML.trim();
+      });
+      const numberPage = parseInt(number, 10);
+      await page.waitForTimeout(2000);
+
+      for (let j = 1; j <= numberPage; j++) {
+        if (j === 1) {
+          await page.waitForTimeout(10000);
+        } else if (j === 2) {
+          await page.waitForTimeout(10000);
+          await page.evaluate(() => {
+            document
+              .querySelector("#tranFrame")
+              .contentWindow.document.body.querySelector(
+                "#currAcc > a:nth-child(1)"
+              )
+              .click();
+            return null;
+          });
+        } else if (j > 2 && j < numberPage) {
+          await page.waitForTimeout(10000);
+          await page.evaluate(
+            (jdxParams) => {
+              document
+                .querySelector("#tranFrame")
+                .contentWindow.document.body.querySelector(
+                  `#currAcc > a:nth-child(${jdxParams.jdx})`
+                )
+                .click();
+              return null;
+            },
+            { jdx: j }
+          );
+        } else {
+          await page.waitForTimeout(10000);
+          await page.evaluate(() => {
+            document
+              .querySelector("#tranFrame")
+              .contentWindow.document.body.querySelector(
+                "#currAcc > a:nth-child(7)"
+              )
+              .click();
+            return null;
+          });
+        }
+        await page.waitForTimeout(3000);
+        const rowCount = await page.evaluate(() => {
+          const table = document
+            .querySelector("#tranFrame")
+            .contentWindow.document.body.querySelector("#data_content_onday")
+            .querySelectorAll("tr");
+          return table.length;
+        });
+
+        for (let i = 1; i < rowCount; i++) {
+          const tradingCode = await page.evaluate(
+            (idxParams) => {
+              return document
+                .querySelector("#tranFrame")
+                .contentWindow.document.body.querySelector(
+                  `#allResultTableBody > tr:nth-child(${idxParams.idx}) > td:nth-child(2)`
+                )
+                .innerHTML.trim();
+            },
+            { idx: i }
+          );
+
+          const declaration = await page.evaluate(
+            (idxParams) => {
+              return document
+                .querySelector("#tranFrame")
+                .contentWindow.document.body.querySelector(
+                  `#allResultTableBody > tr:nth-child(${idxParams.idx}) > td:nth-child(3) > a`
+                ) !== null
+                ? document
+                    .querySelector("#tranFrame")
+                    .contentWindow.document.body.querySelector(
+                      `#allResultTableBody > tr:nth-child(${idxParams.idx}) > td:nth-child(3) > a`
+                    )
+                    .innerHTML.trim()
+                : document
+                    .querySelector("#tranFrame")
+                    .contentWindow.document.body.querySelector(
+                      `#allResultTableBody > tr:nth-child(${idxParams.idx}) > td:nth-child(3)`
+                    )
+                    .innerHTML.trim();
+            },
+            { idx: i }
+          );
+
+          const taxPeriod = await page.evaluate(
+            (idxParams) => {
+              return document
+                .querySelector("#tranFrame")
+                .contentWindow.document.body.querySelector(
+                  `#allResultTableBody > tr:nth-child(${idxParams.idx}) > td:nth-child(4)`
+                )
+                .innerHTML.trim();
+            },
+            { idx: i }
+          );
+
+          const typeOfDeclaration = await page.evaluate(
+            (idxParams) => {
+              return document
+                .querySelector("#tranFrame")
+                .contentWindow.document.body.querySelector(
+                  `#allResultTableBody > tr:nth-child(${idxParams.idx}) > td:nth-child(5)`
+                )
+                .innerHTML.trim();
+            },
+            { idx: i }
+          );
+
+          const numberOfSubmissions = await page.evaluate(
+            (idxParams) => {
+              return document
+                .querySelector("#tranFrame")
+                .contentWindow.document.body.querySelector(
+                  `#allResultTableBody > tr:nth-child(${idxParams.idx}) > td:nth-child(6)`
+                )
+                .innerHTML.trim();
+            },
+            { idx: i }
+          );
+
+          const numberOfAdditions = await page.evaluate(
+            (idxParams) => {
+              return document
+                .querySelector("#tranFrame")
+                .contentWindow.document.body.querySelector(
+                  `#allResultTableBody > tr:nth-child(${idxParams.idx}) > td:nth-child(7)`
+                )
+                .innerHTML.trim();
+            },
+            { idx: i }
+          );
+
+          const dateOfApplication = await page.evaluate(
+            (idxParams) => {
+              return document
+                .querySelector("#tranFrame")
+                .contentWindow.document.body.querySelector(
+                  `#allResultTableBody > tr:nth-child(${idxParams.idx}) > td:nth-child(8)`
+                )
+                .innerHTML.trim();
+            },
+            { idx: i }
+          );
+
+          const placeOfSubmission = await page.evaluate(
+            (idxParams) => {
+              return document
+                .querySelector("#tranFrame")
+                .contentWindow.document.body.querySelector(
+                  `#allResultTableBody > tr:nth-child(${idxParams.idx}) > td:nth-child(10)`
+                )
+                .innerHTML.trim();
+            },
+            { idx: i }
+          );
+
+          const status = await page.evaluate(
+            (idxParams) => {
+              return document
+                .querySelector("#tranFrame")
+                .contentWindow.document.body.querySelector(
+                  `#allResultTableBody > tr:nth-child(${idxParams.idx}) > td:nth-child(11)`
+                )
+                .innerHTML.trim();
+            },
+            { idx: i }
+          );
+
+          arrayA.push({
+            tradingCode: tradingCode,
+            declaration: declaration,
+            taxPeriod: taxPeriod,
+            typeOfDeclaration: typeOfDeclaration,
+            numberOfSubmissions: numberOfSubmissions,
+            numberOfAdditions: numberOfAdditions,
+            dateOfApplication: dateOfApplication,
+            placeOfSubmission: placeOfSubmission,
+            status: status,
+          });
+
+          const downloadFile = await page.evaluate(
+            (idxParams) => {
+              return document
+                .querySelector("#tranFrame")
+                .contentWindow.document.body.querySelector(
+                  `#allResultTableBody > tr:nth-child(${idxParams.idx}) > td:nth-child(3) > a`
+                ) !== null
+                ? document
+                    .querySelector("#tranFrame")
+                    .contentWindow.document.body.querySelector(
+                      `#allResultTableBody > tr:nth-child(${idxParams.idx}) > td:nth-child(3) > a`
+                    )
+                    .click()
+                : null;
+            },
+            { idx: i }
+          );
+          await page.waitForTimeout(3000);
+        }
+      }
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet("Sheet1");
+      worksheet.columns = [
+        { header: "Mã giao dịch", key: "tradingCode", width: 20 },
+        { header: "Tờ khai/Phụ lục", key: "declaration", width: 20 },
+        { header: "Kỳ tính thuế", key: "taxPeriod", width: 20 },
+        { header: "Loại tờ khai", key: "typeOfDeclaration", width: 20 },
+        { header: "Lần nộp", key: "numberOfSubmissions", width: 20 },
+        { header: "Lần bổ sung", key: "numberOfAdditions", width: 20 },
+        { header: "Ngày nộp", key: "dateOfApplication", width: 20 },
+        { header: "Nơi nộp", key: "placeOfSubmission", width: 20 },
+        { header: "Trạng thái", key: "status", width: 20 },
+      ];
+      arrayA.forEach((row) => {
+        worksheet.addRow(row);
+      });
+      workbook.xlsx.writeFile("data.xlsx").then(() => {
+        console.log("Đã xuất tệp Excel thành công");
+      });
       resolve();
     } catch (error) {
       console.log("Lỗi ở scrape category: " + error);

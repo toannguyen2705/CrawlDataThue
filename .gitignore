@@ -1,11 +1,12 @@
 # See https://help.github.com/ignore-files/ for more about ignoring files.
 
 # dependencies
+/filetax
 /node_modules
 package-lock.json
 data.xlsx
 data1.xlsx
-~$data1.xlsx
+~$data.xlsx
 # testing
 /coverage
 
